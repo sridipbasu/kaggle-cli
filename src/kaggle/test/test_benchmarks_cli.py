@@ -487,6 +487,23 @@ class TestRun:
             with pytest.raises(ValueError, match="Invalid selection"):
                 api.benchmarks_tasks_run_cli("my-task")
 
+    def test_run_eof_without_models_raises(self, api):
+        """Closed stdin (EOF) -> clear error instead of hanging on input()."""
+        _setup_completed_task(api)
+        _setup_available_models(api, ["gemini-pro"])
+        with patch("builtins.input", side_effect=EOFError), pytest.raises(ValueError, match="-m/--model"):
+            api.benchmarks_tasks_run_cli("my-task")
+
+    def test_run_accepts_piped_model_selection(self, api):
+        """Piped stdin with a selection still schedules the chosen model."""
+        _setup_completed_task(api)
+        _setup_available_models(api, ["gemini-pro", "gemma-2b"])
+        _setup_batch_schedule(api, [_make_run_result()])
+        with patch("builtins.input", return_value="2"):
+            api.benchmarks_tasks_run_cli("my-task")
+        request = api._mock_benchmarks.batch_schedule_benchmark_task_runs.call_args[0][0]
+        assert request.model_version_slugs == ["gemma-2b"]
+
     # -- Wait / polling --
 
     def test_run_wait_polls_until_completion(self, api, capsys):

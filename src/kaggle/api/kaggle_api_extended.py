@@ -6798,7 +6798,6 @@ class KaggleApi:
 
     def _select_models_interactively(self, kaggle, page_size=20):
         """Prompt the user to pick benchmark models from a paginated list."""
-        # TODO: Check if sys.stdin.isatty() to prevent hanging in non-interactive environments.
 
         def _fetch_models(page_token):
             req = ApiListBenchmarkModelsRequest()
@@ -6831,7 +6830,14 @@ class KaggleApi:
             prompt_parts = ["Enter model numbers (comma-separated)", "'all'"]
             if nav_hints:
                 prompt_parts.extend(nav_hints)
-            selection = input(", ".join(prompt_parts) + ": ").strip().lower()
+            try:
+                selection = input(", ".join(prompt_parts) + ": ").strip().lower()
+            except EOFError:
+                raise ValueError(
+                    "No model specified and no input received. "
+                    "Pass one or more models with -m/--model, or use "
+                    "'kaggle b t models' to list available models."
+                ) from None
 
             if selection == "n" and current_page < total_pages - 1:
                 current_page += 1
