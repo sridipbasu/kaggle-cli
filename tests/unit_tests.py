@@ -256,7 +256,9 @@ class TestKaggleApi(unittest.TestCase):
             # on localhost and cancel the active event. That will exit the loop, but you may
             # need to clean up other active kernels to get it to run again.
             count = 0
-            while (status_result.status == KernelWorkerStatus.RUNNING or status_result.status == KernelWorkerStatus.QUEUED) and count < max_status_tries:
+            while (
+                status_result.status == KernelWorkerStatus.RUNNING or status_result.status == KernelWorkerStatus.QUEUED
+            ) and count < max_status_tries:
                 time.sleep(5)
                 status_result = api.kernels_status(self.kernel_slug)
                 print(status_result.status)
