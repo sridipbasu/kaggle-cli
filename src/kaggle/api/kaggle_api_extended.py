@@ -3850,7 +3850,7 @@ class KaggleApi:
         else:
             downloaded = False
 
-        if downloaded:
+        if downloaded or unzip:
             outfile = os.path.join(effective_path, dataset_slug + ".zip")
             if unzip:
                 try:
