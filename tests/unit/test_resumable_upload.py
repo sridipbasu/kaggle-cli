@@ -58,7 +58,7 @@ class TestResumableUpload(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 308
         mock_response.headers = {}
-        
+
         session_instance = mock_session.return_value
         session_instance.put.return_value = mock_response
 
@@ -73,7 +73,7 @@ class TestResumableUpload(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 308
         mock_response.headers = {"Range": "bytes=0-0"}
-        
+
         session_instance = mock_session.return_value
         session_instance.put.return_value = mock_response
 
@@ -88,7 +88,7 @@ class TestResumableUpload(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 308
         mock_response.headers = {"Range": "bytes=0-499"}
-        
+
         session_instance = mock_session.return_value
         session_instance.put.return_value = mock_response
 
@@ -102,7 +102,7 @@ class TestResumableUpload(unittest.TestCase):
         # Case: status query returns 200 (upload already complete)
         mock_response = MagicMock()
         mock_response.status_code = 200
-        
+
         session_instance = mock_session.return_value
         session_instance.put.return_value = mock_response
 
@@ -114,7 +114,7 @@ class TestResumableUpload(unittest.TestCase):
         # Case: status query returns 404 (upload expired/failed)
         mock_response = MagicMock()
         mock_response.status_code = 404
-        
+
         session_instance = mock_session.return_value
         session_instance.put.return_value = mock_response
 
