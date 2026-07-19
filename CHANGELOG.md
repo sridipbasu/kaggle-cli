@@ -3,6 +3,8 @@ Changelog
 
 ### Next
 
+* Add `--wait`/`--poll-interval` to `kaggle competitions submit` to wait for scoring, and add `kaggle competitions submission <ref>` to look up a single submission's status and score
+
 ### 2.2.3
 
 * Update --format help text to reference output_format.md (#1074)

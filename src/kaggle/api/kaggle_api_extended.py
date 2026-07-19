@@ -84,6 +84,7 @@ from kagglesdk.competitions.types.competition_api_service import (
     ApiCreateSubmissionResponse,
     ApiStartSubmissionUploadRequest,
     ApiCreateSubmissionRequest,
+    ApiGetSubmissionRequest,
     ApiSubmission,
     ApiListSubmissionsRequest,
     ApiListTeamPublicSubmissionsRequest,
@@ -153,6 +154,7 @@ from kagglesdk.competitions.types.competition_enums import (
     SubmissionGroup,
     SubmissionSortBy,
 )
+from kagglesdk.competitions.types.submission_status import SubmissionStatus
 
 from kagglesdk.competitions.types.competition import PubliclyCloneable, Reward, RewardTypeId
 from kagglesdk.competitions.types.host_service import CompetitionSettings
@@ -1973,6 +1975,8 @@ class KaggleApi:
         competition_opt: Optional[str] = None,
         quiet: bool = False,
         sandbox: bool = False,
+        wait: Optional[int] = None,
+        poll_interval: int = 60,
     ) -> str:
         """Submits a competition using the client.
 
@@ -1985,12 +1989,17 @@ class KaggleApi:
             competition_opt (Optional[str]): An alternative competition option provided by cli.
             quiet (bool): Suppress verbose output (default is False).
             sandbox (bool): Mark as a sandbox submission (default is False).
+            wait (Optional[int]): If not None, wait for the submission to finish scoring.
+                A value of 0 waits indefinitely; a positive value is a timeout in seconds.
+            poll_interval (int): Maximum seconds between status polls while waiting (default 60).
 
         Returns:
             str:
         """
         if kernel and not version or version and not kernel:
             raise ValueError("Code competition submissions require both the output file name and the version number")
+        if wait is not None and poll_interval <= 0:
+            raise ValueError("--poll-interval must be a positive integer")
         competition = competition or competition_opt
         try:
             if kernel:
@@ -2016,7 +2025,126 @@ class KaggleApi:
                 return ""
             else:
                 raise e
+
+        # The backend returns the new submission's ref; surface it so users can
+        # look the submission up later (e.g. `kaggle competitions submission <ref>`).
+        submission_ref = getattr(submit_result, "ref", None)
+        if submission_ref:
+            print("Submission ref: %s" % submission_ref)
+            if wait is not None:
+                self._poll_submission(submission_ref, wait, poll_interval, quiet=quiet)
+
         return submit_result.message
+
+    def get_submission(self, submission_ref: int) -> ApiSubmission:
+        """Fetches a single competition submission by its numeric ref.
+
+        Args:
+            submission_ref (int): The numeric submission ref (printed by
+                ``kaggle competitions submit``).
+
+        Returns:
+            ApiSubmission: The submission, including its scoring status and scores.
+        """
+        with self.build_kaggle_client() as kaggle:
+            request = ApiGetSubmissionRequest()
+            request.ref = int(submission_ref)
+            return self.with_retry(kaggle.competitions.competition_api_client.get_submission)(request)
+
+    def _poll_submission(self, submission_ref, wait, poll_interval, quiet=False):
+        """Polls a submission until it finishes scoring or the wait times out.
+
+        Reuses the shared adaptive-backoff (``_adaptive_sleep``) and retry
+        (``with_retry``) infrastructure. A transient 404 immediately after
+        submission (eventual consistency) is treated as PENDING while still
+        inside the wait window rather than being surfaced as an error.
+
+        Args:
+            submission_ref: The numeric submission ref to poll.
+            wait: 0 waits indefinitely; a positive value is a timeout in seconds.
+            poll_interval: Maximum seconds between polls (adaptive up to this cap).
+            quiet: Suppress per-poll status output (default is False).
+
+        Returns:
+            ApiSubmission: The submission once it reaches COMPLETE.
+
+        Raises:
+            ValueError: If the submission finishes in ERROR or the wait times out.
+        """
+        start_time = time.time()
+        current_interval = min(self._ADAPTIVE_POLL_START, poll_interval)
+        try:
+            while True:
+                try:
+                    submission = self.get_submission(submission_ref)
+                except HTTPError as e:
+                    # A freshly created submission may not be immediately
+                    # readable; keep waiting rather than failing.
+                    if e.response is not None and e.response.status_code == 404:
+                        submission = None
+                    else:
+                        raise
+
+                status = submission.status if submission is not None else SubmissionStatus.PENDING
+
+                if status == SubmissionStatus.COMPLETE:
+                    if not quiet:
+                        score = submission.public_score or "(not published)"
+                        print("Submission scored. Public score: %s" % score)
+                    return submission
+
+                if status == SubmissionStatus.ERROR:
+                    error = (submission.error_description or "").strip() or "No error message provided."
+                    raise ValueError("Submission %s failed to score.\n  Error: %s" % (submission_ref, error))
+
+                if not quiet:
+                    print("Submission status: %s..." % status.name)
+
+                if wait > 0 and (time.time() - start_time) > wait:
+                    raise ValueError(
+                        "Timed out after %ss waiting for submission %s to finish scoring.\n"
+                        "Submission ref: %s\n"
+                        "Check status with: kaggle competitions submission %s"
+                        % (wait, submission_ref, submission_ref, submission_ref)
+                    )
+
+                current_interval = self._adaptive_sleep(current_interval, poll_interval)
+        except KeyboardInterrupt:
+            print(
+                "\nStopped waiting for submission %s.\n"
+                "Check status with: kaggle competitions submission %s" % (submission_ref, submission_ref)
+            )
+            raise
+
+    def competition_submission_cli(self, submission_ref, submission_ref_opt=None):
+        """Shows status and score for a single competition submission.
+
+        Args:
+            submission_ref: The numeric submission ref (printed by
+                ``kaggle competitions submit``).
+            submission_ref_opt: An alternative ref provided by the client.
+        """
+        submission_ref = submission_ref if submission_ref is not None else submission_ref_opt
+        if submission_ref is None:
+            raise ValueError("A submission ref must be specified")
+        submission = self.get_submission(submission_ref)
+        self._print_submission(submission)
+
+    def _print_submission(self, submission: ApiSubmission) -> None:
+        """Prints a single submission as an aligned, human-readable block."""
+        status = submission.status.name if submission.status is not None else ""
+        rows = [
+            ("Submission Ref", submission.ref),
+            ("Status", status),
+            ("Public Score", submission.public_score),
+            ("Private Score", submission.private_score),
+            ("Description", submission.description),
+            ("Submission Date", submission.date),
+        ]
+        width = max(len(label) for label, _ in rows)
+        for label, value in rows:
+            display = "" if value is None else self.string(value)
+            print("%-*s %s" % (width + 1, label + ":", display))
 
     def competition_submissions(
         self,
