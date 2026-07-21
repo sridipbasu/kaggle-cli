@@ -2641,11 +2641,11 @@ class Help(object):
     param_code_version = 'Version of kernel to submit to a code competition, e.g. "3"'
     param_submit_wait = (
         "Wait for the submission to finish scoring. Optionally specify a timeout in seconds "
-        "(0 or omit value = wait indefinitely)"
+        "(0 or omit value = wait up to 12 hours, the maximum notebook runtime)"
     )
     param_submit_poll_interval = (
-        "Maximum seconds between status polls while waiting (default: 60). Polling starts at 5s "
-        "and increases automatically"
+        "Maximum seconds between status polls while waiting (default: 60, minimum: 5). "
+        "Polling starts at 5s and increases automatically"
     )
     param_submission_ref = "The numeric submission ref (printed by 'kaggle competitions submit')"
     param_csv = "Print results in CSV format (if not set print in table format)"

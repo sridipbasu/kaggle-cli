@@ -145,8 +145,8 @@ kaggle competitions submit <COMPETITION> -f <FILE_NAME> -m <MESSAGE> [options]
 *   `-v, --version <VERSION>`: Version of the kernel to submit (e.g. `2`).
 *   `-q, --quiet`: Suppress verbose output.
 *   `--sandbox`: Mark submission as a sandbox submission (competition hosts/admins only).
-*   `--wait [SECONDS]`: Wait for the submission to finish scoring, printing the public score when done. Optionally pass a timeout in seconds (`0` or no value = wait indefinitely). Exits non-zero if scoring fails or the timeout is reached.
-*   `--poll-interval <SECONDS>`: Maximum seconds between status polls while waiting (default: `60`). Polling starts at 5s and increases automatically.
+*   `--wait [SECONDS]`: Wait for the submission to finish scoring, printing the public score when done. Optionally pass a timeout in seconds (`0` or no value = wait up to 12 hours, the maximum notebook runtime). Exits non-zero if scoring fails or the timeout is reached.
+*   `--poll-interval <SECONDS>`: Maximum seconds between status polls while waiting (default: `60`, minimum: `5`). Polling starts at 5s and increases automatically.
 
 On a successful submission the command prints the numeric submission ref, e.g. `Submission ref: 12345678`. You can look that submission up later with [`kaggle competitions submission`](#kaggle-competitions-submission).
 

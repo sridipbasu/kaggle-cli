@@ -149,8 +149,8 @@ kaggle competitions submit [COMPETITION] -m <MESSAGE> [options]
 - `-m, --message <MESSAGE>`: Required submission description.
 - `-v, --version <VERSION>`: Kernel version for code competitions.
 - `--sandbox`: Mark as sandbox submission for competition hosts/admins.
-- `--wait [SECONDS]`: Wait for the submission to finish scoring and print the public score. `0` or no value waits indefinitely; a positive value is a timeout in seconds. Exits non-zero on scoring failure or timeout.
-- `--poll-interval <SECONDS>`: Max seconds between status polls while waiting (default 60; starts at 5s, backs off).
+- `--wait [SECONDS]`: Wait for the submission to finish scoring and print the public score. `0` or no value waits up to 12 hours (the maximum notebook runtime); a positive value is a timeout in seconds. Exits non-zero on scoring failure or timeout.
+- `--poll-interval <SECONDS>`: Max seconds between status polls while waiting (default 60, minimum 5; starts at 5s, backs off).
 - `-q, --quiet`: Suppress progress output.
 
 **Examples:**

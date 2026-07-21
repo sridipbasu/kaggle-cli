@@ -1990,7 +1990,8 @@ class KaggleApi:
             quiet (bool): Suppress verbose output (default is False).
             sandbox (bool): Mark as a sandbox submission (default is False).
             wait (Optional[int]): If not None, wait for the submission to finish scoring.
-                A value of 0 waits indefinitely; a positive value is a timeout in seconds.
+                A value of 0 (or a bare --wait) waits up to 12 hours, the maximum Kaggle
+                notebook runtime; a positive value is a timeout in seconds.
             poll_interval (int): Maximum seconds between status polls while waiting (default 60).
 
         Returns:
@@ -1998,8 +1999,15 @@ class KaggleApi:
         """
         if kernel and not version or version and not kernel:
             raise ValueError("Code competition submissions require both the output file name and the version number")
-        if wait is not None and poll_interval <= 0:
-            raise ValueError("--poll-interval must be a positive integer")
+        if wait is not None:
+            if poll_interval < self._MIN_POLL_INTERVAL:
+                raise ValueError(
+                    "--poll-interval must be at least %ss to avoid overloading Kaggle's servers."
+                    % self._MIN_POLL_INTERVAL
+                )
+            # "Wait indefinitely" (0) is capped at the 12h maximum notebook runtime.
+            if wait == 0:
+                wait = self._DEFAULT_WAIT_TIMEOUT
         competition = competition or competition_opt
         try:
             if kernel:
@@ -9348,6 +9356,13 @@ class KaggleApi:
         return f"{'-'.join(in_names) or 'Unknown'}-to-{'-'.join(out_names) or 'Unknown'}"
 
     _ADAPTIVE_POLL_START = 5  # Initial adaptive polling interval in seconds
+    # Lower bound for --poll-interval. Tied to the adaptive start: polling more
+    # frequently than the backoff's own starting interval would just hammer
+    # Kaggle's servers with no benefit, so 5s is the sane minimum.
+    _MIN_POLL_INTERVAL = _ADAPTIVE_POLL_START  # 5s
+    # Default --wait timeout. A Kaggle notebook runs for at most 12 hours, so an
+    # unbounded wait can never outlast the submission; cap it at that maximum.
+    _DEFAULT_WAIT_TIMEOUT = 12 * 60 * 60  # 12 hours, in seconds
 
     @staticmethod
     def _adaptive_sleep(current_interval, poll_interval, verbose=False):

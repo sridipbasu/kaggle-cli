@@ -52,7 +52,8 @@ def _http_404():
 def test_submit_parser_wait_flag_bare(parser):
     func, kwargs = parser.dispatch(["competitions", "submit", "my-comp", "-f", "sub.csv", "-m", "msg", "--wait"])
     assert func.__name__ == "competition_submit_cli"
-    assert kwargs["wait"] == 0  # const: bare --wait means wait indefinitely
+    # const: bare --wait parses to 0; competition_submit_cli resolves 0 to the 12h default.
+    assert kwargs["wait"] == 0
     assert kwargs["poll_interval"] == 60
 
 
@@ -204,7 +205,8 @@ def test_submit_cli_prints_ref_without_wait():
     assert result == "Successfully submitted"
 
 
-def test_submit_cli_wait_polls_submission():
+def test_submit_cli_wait_default_timeout_is_12h():
+    # A bare --wait (wait=0) is resolved to the 12h maximum notebook runtime, not infinite.
     api = _api()
     api.competition_submit = MagicMock(return_value=MagicMock(ref=12345, message="Successfully submitted"))
     api._poll_submission = MagicMock()
@@ -216,19 +218,49 @@ def test_submit_cli_wait_polls_submission():
         )
 
     assert "Submission ref: 12345" in out.getvalue()
-    api._poll_submission.assert_called_once_with(12345, 0, 60, quiet=False)
+    # 0 → 12h (43200s); poll_interval passed through unchanged.
+    api._poll_submission.assert_called_once_with(12345, 43200, 60, quiet=False)
     assert result == "Successfully submitted"
 
 
-def test_submit_cli_invalid_poll_interval_fails_fast():
+def test_submit_cli_wait_explicit_timeout_passed_through():
+    # An explicit positive timeout is forwarded verbatim (no 12h substitution).
+    api = _api()
+    api.competition_submit = MagicMock(return_value=MagicMock(ref=12345, message="Successfully submitted"))
+    api._poll_submission = MagicMock()
+
+    with redirect_stdout(io.StringIO()):
+        api.competition_submit_cli(
+            file_name="sub.csv", message="m", competition="comp", quiet=False, wait=300, poll_interval=60
+        )
+
+    api._poll_submission.assert_called_once_with(12345, 300, 60, quiet=False)
+
+
+def test_submit_cli_poll_interval_below_minimum_fails_fast():
     api = _api()
     api.competition_submit = MagicMock()
 
+    # 3s is below the 5s minimum poll interval.
     with pytest.raises(ValueError) as ctx:
-        api.competition_submit_cli(file_name="sub.csv", message="m", competition="comp", wait=0, poll_interval=0)
+        api.competition_submit_cli(file_name="sub.csv", message="m", competition="comp", wait=0, poll_interval=3)
 
-    assert "--poll-interval must be a positive integer" in str(ctx.value)
+    assert "--poll-interval must be at least 5s" in str(ctx.value)
     api.competition_submit.assert_not_called()  # validated before submitting
+
+
+def test_submit_cli_poll_interval_at_minimum_is_accepted():
+    # The 5s boundary is valid and reaches polling.
+    api = _api()
+    api.competition_submit = MagicMock(return_value=MagicMock(ref=12345, message="Successfully submitted"))
+    api._poll_submission = MagicMock()
+
+    with redirect_stdout(io.StringIO()):
+        api.competition_submit_cli(
+            file_name="sub.csv", message="m", competition="comp", quiet=False, wait=600, poll_interval=5
+        )
+
+    api._poll_submission.assert_called_once_with(12345, 600, 5, quiet=False)
 
 
 def test_submit_cli_wait_propagates_scoring_error():
