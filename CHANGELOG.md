@@ -3,6 +3,8 @@ Changelog
 
 ### Next
 
+* Add unified `kaggle search` command across competitions, datasets, notebooks, models, users, and discussions
+
 ### 2.2.3
 
 * Update --format help text to reference output_format.md (#1074)
