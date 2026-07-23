@@ -2651,7 +2651,7 @@ class Help(object):
     )
     param_search_mine = "Restrict the search to your own content"
     param_search_sort_by = (
-        "Sort order. One of: relevance (default), hotness, votes, published, updated, comments, viewed"
+        "Sort order. One of: relevance (default), hotness, votes, dateCreated, dateUpdated, totalComments, lastViewed"
     )
 
     # Forums params

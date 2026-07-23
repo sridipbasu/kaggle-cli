@@ -130,6 +130,12 @@ class TestSearchApi(unittest.TestCase):
         self.api.search("x", document_types=["discussion"])
         self.assertEqual(list(captured["request"].filters.document_types), [DocumentType.TOPIC])
 
+    def test_search_rejects_unsupported_backend_type(self):
+        # "comment" is a real DocumentType member but is not CLI-supported; it
+        # must be rejected even though lookup_enum could resolve it.
+        with self.assertRaises(ValueError):
+            self.api.search("x", document_types=["comment"])
+
     def test_search_mine_sets_list_type(self):
         captured = self._patch_client(_response())
         self.api.search("x", mine=True)
@@ -141,6 +147,22 @@ class TestSearchApi(unittest.TestCase):
         self.assertEqual(
             captured["request"].canonical_order_by,
             ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_VOTES,
+        )
+
+    def test_search_sort_by_camelcase_resolves_via_lookup_enum(self):
+        captured = self._patch_client(_response())
+        self.api.search("x", sort_by="dateCreated")
+        self.assertEqual(
+            captured["request"].canonical_order_by,
+            ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_DATE_CREATED,
+        )
+
+    def test_search_sort_by_relevance_maps_to_unspecified(self):
+        captured = self._patch_client(_response())
+        self.api.search("x", sort_by="relevance")
+        self.assertEqual(
+            captured["request"].canonical_order_by,
+            ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_UNSPECIFIED,
         )
 
     def test_search_pagination(self):

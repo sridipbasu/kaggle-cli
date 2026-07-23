@@ -37,7 +37,7 @@ kaggle search "<query>" [options]
 - `query`: Term(s) to search for (required).
 - `-t, --type <TYPES>`: Comma-separated content types to restrict to. Valid: `competition`, `dataset`, `notebook`, `model`, `user`, `discussion`. Omit to search all of these CLI-supported types.
 - `-m, --mine`: Restrict the search to your own content.
-- `--sort-by <SORT_BY>`: One of `relevance` (default), `hotness`, `votes`, `published`, `updated`, `comments`, `viewed`.
+- `--sort-by <SORT_BY>`: One of `relevance` (default), `hotness`, `votes`, `dateCreated`, `dateUpdated`, `totalComments`, `lastViewed`.
 - `--page-size <SIZE>`: Results per page (default 20, max 100).
 - `--page-token <TOKEN>`: Page token for paging.
 - `-v, --csv`: Print CSV instead of a table.
@@ -49,7 +49,7 @@ kaggle search "<query>" [options]
 kaggle search "weather"
 kaggle search "diffusion" --type dataset,model
 kaggle search "andrew ng" --type user
-kaggle search "baseline" --mine --sort-by updated
+kaggle search "baseline" --mine --sort-by dateUpdated
 kaggle search "titanic" --format json
 ```
 

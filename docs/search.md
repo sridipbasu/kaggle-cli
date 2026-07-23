@@ -27,7 +27,7 @@ kaggle search "<query>" [options]
 *   `query`: The term(s) to search for (required).
 *   `-t, --type <TYPES>`: Restrict results to a comma-separated list of content types. Valid types: `competition`, `dataset`, `notebook`, `model`, `user`, `discussion`. If omitted, all of these CLI-supported types are searched.
 *   `-m, --mine`: Restrict the search to your own content.
-*   `--sort-by <SORT_BY>`: Sort order. One of: `relevance` (default), `hotness`, `votes`, `published`, `updated`, `comments`, `viewed`.
+*   `--sort-by <SORT_BY>`: Sort order. One of: `relevance` (default), `hotness`, `votes`, `dateCreated`, `dateUpdated`, `totalComments`, `lastViewed`.
 *   `--page-size <SIZE>`: Number of results to show on a page (default: 20, max: 100).
 *   `--page-token <TOKEN>`: Page token for results paging (printed as `Next Page Token = ...` at the top of a page when more results exist).
 *   `-v, --csv`: Print results in CSV format instead of a table.
@@ -60,7 +60,7 @@ notebooks, and models; the bare slug for competitions and users.
 4.  Search your own content, most recently updated first:
 
     ```bash
-    kaggle search "baseline" --mine --sort-by updated
+    kaggle search "baseline" --mine --sort-by dateUpdated
     ```
 
 5.  Get machine-readable output:

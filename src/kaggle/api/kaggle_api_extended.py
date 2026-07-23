@@ -959,7 +959,15 @@ class KaggleApi:
 
     # Search valid types
     valid_search_document_types = ["competition", "dataset", "notebook", "model", "user", "discussion"]
-    valid_search_sort_by = ["relevance", "hotness", "votes", "published", "updated", "comments", "viewed"]
+    valid_search_sort_by = [
+        "relevance",
+        "hotness",
+        "votes",
+        "dateCreated",
+        "dateUpdated",
+        "totalComments",
+        "lastViewed",
+    ]
 
     # Competitions valid types
     valid_competition_groups = ["general", "entered", "community", "hosted", "unlaunched", "unlaunched_community"]
@@ -6021,26 +6029,23 @@ class KaggleApi:
         """
         if not document_types:
             return []
-        mapping = {
-            "competition": DocumentType.COMPETITION,
-            "dataset": DocumentType.DATASET,
-            "notebook": DocumentType.KERNEL,
-            "kernel": DocumentType.KERNEL,
-            "model": DocumentType.MODEL,
-            "user": DocumentType.USER,
-            "discussion": DocumentType.TOPIC,
-        }
+        # notebook/kernel and discussion are CLI names that don't match their
+        # DocumentType members (KERNEL, TOPIC); everything else is resolved by
+        # lookup_enum. The supported set gates out backend types the CLI cannot
+        # render (comment, blog, course, ...).
+        aliases = {"notebook": "kernel", "kernel": "kernel", "discussion": "topic"}
+        supported = set(self.valid_search_document_types) | set(aliases)
         resolved: list[DocumentType] = []
         for raw in document_types:
             key = raw.strip().lower()
             if key.endswith("s"):
                 key = key[:-1]
-            if key not in mapping:
+            if key not in supported:
                 raise ValueError(
                     "Invalid document type '%s' specified. Valid options are %s"
                     % (raw.strip(), str(self.valid_search_document_types))
                 )
-            value = mapping[key]
+            value = self.lookup_enum(DocumentType, DocumentType.DOCUMENT_TYPE_UNSPECIFIED, aliases.get(key, key))
             if value not in resolved:
                 resolved.append(value)
         return resolved
@@ -6054,23 +6059,21 @@ class KaggleApi:
         Returns:
             ListSearchContentOrderBy: The resolved enum value.
         """
-        mapping = {
-            "relevance": ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_UNSPECIFIED,
-            "hotness": ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_HOTNESS,
-            "votes": ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_VOTES,
-            "published": ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_DATE_CREATED,
-            "updated": ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_DATE_UPDATED,
-            "comments": ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_TOTAL_COMMENTS,
-            "viewed": ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_LAST_VIEWED,
-        }
         if not sort_by:
-            return mapping["relevance"]
-        key = sort_by.strip().lower()
-        if key not in mapping:
+            sort_by = "relevance"
+        if sort_by not in self.valid_search_sort_by:
             raise ValueError(
                 "Invalid sort by '%s' specified. Valid options are %s" % (sort_by, str(self.valid_search_sort_by))
             )
-        return mapping[key]
+        if sort_by == "relevance":
+            # ListSearchContentOrderBy has no RELEVANCE member; UNSPECIFIED is the
+            # backend's default relevance ranking.
+            return ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_UNSPECIFIED
+        return self.lookup_enum(
+            ListSearchContentOrderBy,
+            ListSearchContentOrderBy.LIST_SEARCH_CONTENT_ORDER_BY_UNSPECIFIED,
+            sort_by,
+        )
 
     def _search_document_to_row(self, document: ListEntitiesDocument) -> "SimpleNamespace":
         """Normalizes a mixed-type search document into a flat row for display.
@@ -6136,17 +6139,11 @@ class KaggleApi:
         Returns:
             str: A lowercase label such as "notebook" or "discussion".
         """
-        labels = {
-            DocumentType.COMPETITION: "competition",
-            DocumentType.DATASET: "dataset",
-            DocumentType.KERNEL: "notebook",
-            DocumentType.MODEL: "model",
-            DocumentType.USER: "user",
-            DocumentType.TOPIC: "discussion",
-            DocumentType.COMMENT: "comment",
-        }
-        if document_type in labels:
-            return labels[document_type]
+        # Only KERNEL and TOPIC need a user-facing label that differs from their
+        # enum name; everything else uses the built-in enum name.
+        overrides = {DocumentType.KERNEL: "notebook", DocumentType.TOPIC: "discussion"}
+        if document_type in overrides:
+            return overrides[document_type]
         return document_type.name.replace("DOCUMENT_TYPE_", "").lower()
 
     def kernels_list_files(self, kernel, page_token=None, page_size=20):
