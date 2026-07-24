@@ -364,6 +364,31 @@ def parse_competitions(subparsers) -> None:
     parser_competitions_team_submissions._action_groups.append(parser_competitions_team_submissions_optional)
     parser_competitions_team_submissions.set_defaults(func=api.competition_team_submissions_cli)
 
+    # Competitions submission limits (your team's submission counts and remaining daily allowance)
+    parser_competitions_submission_limits = subparsers_competitions.add_parser(
+        "submission-limits",
+        formatter_class=argparse.RawTextHelpFormatter,
+        help=Help.command_competitions_submission_limits,
+    )
+    parser_competitions_submission_limits_optional = parser_competitions_submission_limits._action_groups.pop()
+    parser_competitions_submission_limits_optional.add_argument(
+        "competition", nargs="?", default=None, help=Help.param_competition
+    )
+    parser_competitions_submission_limits_optional.add_argument(
+        "-c", "--competition", dest="competition_opt", required=False, help=argparse.SUPPRESS
+    )
+    parser_competitions_submission_limits_optional.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit the limits as JSON instead of the human-readable view.",
+    )
+    parser_competitions_submission_limits_optional.add_argument(
+        "-q", "--quiet", dest="quiet", action="store_true", help=Help.param_quiet
+    )
+    parser_competitions_submission_limits._action_groups.append(parser_competitions_submission_limits_optional)
+    parser_competitions_submission_limits.set_defaults(func=api.competition_get_submission_limits_cli)
+
     # Competitions list episodes
     parser_competitions_episodes = subparsers_competitions.add_parser(
         "episodes", formatter_class=argparse.RawTextHelpFormatter, help=Help.command_competitions_episodes
@@ -596,37 +621,23 @@ def parse_competitions(subparsers) -> None:
     parser_competitions_pages_delete._action_groups.append(parser_competitions_pages_delete_optional)
     parser_competitions_pages_delete.set_defaults(func=api.competition_delete_page_cli)
 
-    # Competitions hosts (group: list)
-    shared_competition_hosts_list = argparse.ArgumentParser(add_help=False)
-    shared_competition_hosts_list.add_argument("competition", nargs="?", default=None, help=Help.param_competition)
-    shared_competition_hosts_list.add_argument(
-        "-c", "--competition", dest="competition_opt", required=False, help=argparse.SUPPRESS
-    )
-    _add_output_format_args(shared_competition_hosts_list)
-    shared_competition_hosts_list.add_argument(
-        "-q", "--quiet", dest="quiet", action="store_true", help=Help.param_quiet
-    )
-
+    # Competitions hosts (list hosts for a competition)
     parser_competitions_hosts = subparsers_competitions.add_parser(
         "hosts",
         formatter_class=argparse.RawTextHelpFormatter,
         help=Help.command_competitions_hosts,
-        parents=[shared_competition_hosts_list],
     )
-    subparsers_competitions_hosts = parser_competitions_hosts.add_subparsers(title="commands", dest="command")
-    subparsers_competitions_hosts.choices = Help.entity_hosts_choices
-
-    # Default action when no subcommand is given: list
+    parser_competitions_hosts_optional = parser_competitions_hosts._action_groups.pop()
+    parser_competitions_hosts_optional.add_argument("competition", nargs="?", default=None, help=Help.param_competition)
+    parser_competitions_hosts_optional.add_argument(
+        "-c", "--competition", dest="competition_opt", required=False, help=argparse.SUPPRESS
+    )
+    _add_output_format_args(parser_competitions_hosts_optional)
+    parser_competitions_hosts_optional.add_argument(
+        "-q", "--quiet", dest="quiet", action="store_true", help=Help.param_quiet
+    )
+    parser_competitions_hosts._action_groups.append(parser_competitions_hosts_optional)
     parser_competitions_hosts.set_defaults(func=api.competition_list_hosts_cli)
-
-    # Competitions hosts list (explicit)
-    parser_competitions_hosts_list = subparsers_competitions_hosts.add_parser(
-        "list",
-        formatter_class=argparse.RawTextHelpFormatter,
-        help=Help.command_competitions_hosts,
-        parents=[shared_competition_hosts_list],
-    )
-    parser_competitions_hosts_list.set_defaults(func=api.competition_list_hosts_cli)
 
     # Competitions data (group: update)
     parser_competitions_data = subparsers_competitions.add_parser(
@@ -765,6 +776,67 @@ def parse_competitions(subparsers) -> None:
     )
     parser_competitions_settings_update._action_groups.append(parser_competitions_settings_update_optional)
     parser_competitions_settings_update.set_defaults(func=api.competition_update_settings_cli)
+
+    # Competitions solution (group: create, status)
+    parser_competitions_solution = subparsers_competitions.add_parser(
+        "solution",
+        formatter_class=argparse.RawTextHelpFormatter,
+        help=Help.command_competitions_solution,
+    )
+    subparsers_competitions_solution = parser_competitions_solution.add_subparsers(title="commands", dest="command")
+    subparsers_competitions_solution.required = True
+    subparsers_competitions_solution.choices = Help.entity_solution_choices
+
+    # Competitions solution create
+    parser_competitions_solution_create = subparsers_competitions_solution.add_parser(
+        "create",
+        formatter_class=argparse.RawTextHelpFormatter,
+        help=Help.command_competitions_solution_create,
+    )
+    parser_competitions_solution_create_optional = parser_competitions_solution_create._action_groups.pop()
+    parser_competitions_solution_create_optional.add_argument(
+        "competition", nargs="?", default=None, help=Help.param_competition
+    )
+    parser_competitions_solution_create_optional.add_argument(
+        "-c", "--competition", dest="competition_opt", required=False, help=argparse.SUPPRESS
+    )
+    parser_competitions_solution_create_optional.add_argument(
+        "-p",
+        "--path",
+        dest="path",
+        required=True,
+        help="Path to the private solution CSV. Must be a single file in the same shape as a submission.",
+    )
+    parser_competitions_solution_create_optional.add_argument(
+        "-q", "--quiet", dest="quiet", action="store_true", help=Help.param_quiet
+    )
+    parser_competitions_solution_create._action_groups.append(parser_competitions_solution_create_optional)
+    parser_competitions_solution_create.set_defaults(func=api.competition_create_solution_cli)
+
+    # Competitions solution status
+    parser_competitions_solution_status = subparsers_competitions_solution.add_parser(
+        "status",
+        formatter_class=argparse.RawTextHelpFormatter,
+        help=Help.command_competitions_solution_status,
+    )
+    parser_competitions_solution_status_optional = parser_competitions_solution_status._action_groups.pop()
+    parser_competitions_solution_status_optional.add_argument(
+        "competition", nargs="?", default=None, help=Help.param_competition
+    )
+    parser_competitions_solution_status_optional.add_argument(
+        "-c", "--competition", dest="competition_opt", required=False, help=argparse.SUPPRESS
+    )
+    parser_competitions_solution_status_optional.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit the status as JSON instead of the human-readable view.",
+    )
+    parser_competitions_solution_status_optional.add_argument(
+        "-q", "--quiet", dest="quiet", action="store_true", help=Help.param_quiet
+    )
+    parser_competitions_solution_status._action_groups.append(parser_competitions_solution_status_optional)
+    parser_competitions_solution_status.set_defaults(func=api.competition_get_solution_status_cli)
 
     # Competitions launch (publish now, or schedule for a future UTC time)
     parser_competitions_launch = subparsers_competitions.add_parser(
@@ -2382,6 +2454,7 @@ class Help(object):
         "submission",
         "leaderboard",
         "team-submissions",
+        "submission-limits",
         "episodes",
         "replay",
         "logs",
@@ -2389,6 +2462,7 @@ class Help(object):
         "hosts",
         "data",
         "settings",
+        "solution",
         "launch",
         "init",
         "create",
@@ -2454,9 +2528,9 @@ class Help(object):
     forums_topics_choices = ["list", "show"]
     entity_topics_choices = ["list", "show"]
     entity_pages_choices = ["list", "create", "update", "delete"]
-    entity_hosts_choices = ["list"]
     entity_data_choices = ["update"]
     entity_settings_choices = ["get", "update"]
+    entity_solution_choices = ["create", "status"]
     config_choices = ["view", "set", "unset"]
     auth_choices = ["login", "print-access-token", "revoke"]
 
@@ -2526,6 +2600,9 @@ class Help(object):
     command_competitions_submission = "Show status and score for a single submission by its ref"
     command_competitions_leaderboard = "Get competition leaderboard information"
     command_competitions_team_submissions = "List a team's public submissions (every active submission for simulation competitions, or the public leaderboard submission for regular competitions)"
+    command_competitions_submission_limits = (
+        "Show your team's submission counts and remaining daily allowance for a competition"
+    )
     command_competitions_episodes = "List episodes for a submission in a simulation competition"
     command_competitions_episode_replay = "Download the replay for a simulation episode"
     command_competitions_episode_logs = "Download agent logs for a simulation episode"
@@ -2539,6 +2616,9 @@ class Help(object):
     command_competitions_settings = "Manage settings for a competition you host"
     command_competitions_settings_get = "Show the current settings for a competition you host"
     command_competitions_settings_update = "Update settings for a competition you host from a JSON or YAML file"
+    command_competitions_solution = "Manage the private solution file for a competition you host"
+    command_competitions_solution_create = "Upload the private solution CSV for a competition you host"
+    command_competitions_solution_status = "Show the setup status for a competition's solution file"
     command_competitions_launch = "Launch a competition you host, optionally at a future UTC time"
     command_competitions_init = "Initialize folder with a competition-metadata.json template"
     command_competitions_create = "Create a new competition from competition-metadata.json"
