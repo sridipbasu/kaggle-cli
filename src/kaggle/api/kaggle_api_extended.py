@@ -86,6 +86,8 @@ from kagglesdk.competitions.types.competition_api_service import (
     ApiCreateSubmissionRequest,
     ApiSubmission,
     ApiListSubmissionsRequest,
+    ApiGetSubmissionLimitsRequest,
+    ApiSubmissionLimits,
     ApiListTeamPublicSubmissionsRequest,
     ApiListDataFilesResponse,
     ApiListDataFilesRequest,
@@ -111,6 +113,9 @@ from kagglesdk.competitions.types.competition_api_service import (
     ApiUpdateCompetitionSettingsRequest,
     ApiCreateCompetitionDataRequest,
     ApiCreateCompetitionDataResponse,
+    ApiCreateCompetitionSolutionRequest,
+    ApiGetCompetitionSolutionStatusRequest,
+    ApiCompetitionSolutionStatus,
     ApiCompetitionDataFile,
     ApiCompetitionPage,
     ApiCreateCompetitionRequest,
@@ -906,6 +911,7 @@ class KaggleApi:
     MODEL_METADATA_FILE = "model-metadata.json"
     MODEL_INSTANCE_METADATA_FILE = "model-instance-metadata.json"
     COMPETITION_METADATA_FILE = "competition-metadata.json"
+    COMPETITION_SUBMIT_UPLOAD_FAILED_MESSAGE = "Could not submit to competition"
     MAX_NUM_INBOX_FILES_TO_UPLOAD = 1000
     MAX_UPLOAD_RESUME_ATTEMPTS = 10
 
@@ -1963,7 +1969,7 @@ class KaggleApi:
                     # Actual error is printed during upload_complete. Not
                     # ideal but changing would not be backwards compatible
                     resp = ApiCreateSubmissionResponse()
-                    resp.message = "Could not submit to competition"
+                    resp.message = self.COMPETITION_SUBMIT_UPLOAD_FAILED_MESSAGE
                     return resp
 
                 submit_request = ApiCreateSubmissionRequest()
@@ -2037,6 +2043,17 @@ class KaggleApi:
                 return ""
             else:
                 raise e
+        submit_succeeded = submit_result.message != self.COMPETITION_SUBMIT_UPLOAD_FAILED_MESSAGE
+        if submit_succeeded and not quiet and competition:
+            # Bonus context: how many submissions are left today. Never fail
+            # the submit over a limits-endpoint blip. Skipped on failed
+            # submissions so we don't imply the submission counted when it
+            # didn't.
+            try:
+                limits = self.competition_get_submission_limits(competition)
+                print(f"{limits.num_allowed_now} submissions remaining today.")
+            except Exception:
+                pass
         return submit_result.message
 
     def competition_submissions(
@@ -2115,6 +2132,46 @@ class KaggleApi:
                 )
             else:
                 print("No submissions found")
+
+    def competition_get_submission_limits(self, competition_name: str) -> ApiSubmissionLimits:
+        """Fetch the calling user's team's submission counts and remaining allowance.
+
+        Args:
+            competition_name (str): The competition name (slug).
+
+        Returns:
+            ApiSubmissionLimits: with num_today, num_total, num_allowed_now,
+            limited_by_total. All zero if the user is not on a team yet.
+        """
+        with self.build_kaggle_client() as kaggle:
+            request = ApiGetSubmissionLimitsRequest()
+            request.competition_name = competition_name
+            return kaggle.competitions.competition_api_client.get_submission_limits(request)
+
+    def competition_get_submission_limits_cli(
+        self,
+        competition=None,
+        competition_opt=None,
+        json_output=False,
+        quiet=False,
+    ):
+        """CLI wrapper for competition_get_submission_limits."""
+        competition_name = competition or competition_opt
+        if competition_name is None:
+            competition_name = self.get_config_value(self.CONFIG_NAME_COMPETITION)
+            if competition_name is not None and not quiet:
+                print("Using competition: " + competition_name)
+        if competition_name is None:
+            raise ValueError("No competition specified")
+
+        limits = self.competition_get_submission_limits(competition_name)
+        if json_output:
+            self.print_obj(limits)
+        else:
+            print(f"Submissions today: {limits.num_today}")
+            print(f"Lifetime submissions: {limits.num_total}")
+            suffix = " (limited by lifetime cap)" if limits.limited_by_total else ""
+            print(f"Remaining today: {limits.num_allowed_now}{suffix}")
 
     def competition_list_files(
         self, competition: str, page_token: Optional[str] = None, page_size: int = 20
@@ -3323,6 +3380,148 @@ class KaggleApi:
             ignore_patterns=ignore_patterns,
         )
         print(f'New data version created for "{competition_name}": {response.url}')
+
+    def competition_create_solution(self, competition_name: str, path: str, quiet: bool = False) -> None:
+        """Upload the private solution CSV for a competition you host.
+
+        The file is uploaded via the public blob-upload pipeline with
+        ApiBlobType.COMPETITION_SOLUTION — the backend routes this straight
+        to the CompetitionSolutions bucket instead of the general InboxFiles
+        bucket, so the source blob doesn't linger after CreateCompetitionSolution
+        moves it into the raw-solution slot. After this call, poll
+        ``competition_get_solution_status`` until ``ready`` flips true (or
+        ``setup_error`` is populated) before submissions can be scored.
+
+        Args:
+            competition_name (str): The competition name (slug).
+            path (str): Path to a single CSV file. The CSV must have the same
+                shape as a submission file.
+            quiet (bool): Suppress per-file upload progress lines.
+        """
+        if not os.path.exists(path):
+            raise ValueError("Invalid path: " + path)
+        if not os.path.isfile(path):
+            raise ValueError("Solution must be a single CSV file, not a directory: " + path)
+
+        with ResumableUploadContext() as upload_context:
+            upload_file = self._upload_file(
+                os.path.basename(path),
+                path,
+                ApiBlobType.COMPETITION_SOLUTION,
+                upload_context,
+                quiet,
+                resources=None,
+            )
+            if upload_file is None:
+                raise ValueError("Solution file upload failed")
+
+        with self.build_kaggle_client() as kaggle:
+            request = ApiCreateCompetitionSolutionRequest()
+            request.competition_name = competition_name
+            request.blob_token = upload_file.token
+            kaggle.competitions.competition_api_client.create_competition_solution(request)
+
+    def competition_create_solution_cli(
+        self,
+        competition=None,
+        competition_opt=None,
+        path=None,
+        quiet=False,
+    ):
+        """CLI wrapper for competition_create_solution."""
+        competition_name = competition or competition_opt
+        if competition_name is None:
+            competition_name = self.get_config_value(self.CONFIG_NAME_COMPETITION)
+            if competition_name is not None and not quiet:
+                print("Using competition: " + competition_name)
+        if competition_name is None:
+            raise ValueError("No competition specified")
+        if not path:
+            raise ValueError("-p/--path is required")
+
+        self.competition_create_solution(competition_name=competition_name, path=path, quiet=quiet)
+        print(
+            f'Solution uploaded for "{competition_name}". '
+            f"Run 'kaggle competitions solution status {competition_name}' to check readiness."
+        )
+
+    def competition_get_solution_status(self, competition_name: str) -> ApiCompetitionSolutionStatus:
+        """Fetch the solution-setup status for a competition you host.
+
+        Args:
+            competition_name (str): The competition name (slug).
+
+        Returns:
+            ApiCompetitionSolutionStatus: current setup state, including a
+            ``ready`` flag and any ``setup_error`` reported by preprocessing.
+        """
+        with self.build_kaggle_client() as kaggle:
+            request = ApiGetCompetitionSolutionStatusRequest()
+            request.competition_name = competition_name
+            return kaggle.competitions.competition_api_client.get_competition_solution_status(request)
+
+    def competition_get_solution_status_cli(
+        self,
+        competition=None,
+        competition_opt=None,
+        json_output=False,
+        quiet=False,
+    ):
+        """CLI wrapper for competition_get_solution_status."""
+        competition_name = competition or competition_opt
+        if competition_name is None:
+            competition_name = self.get_config_value(self.CONFIG_NAME_COMPETITION)
+            if competition_name is not None and not quiet:
+                print("Using competition: " + competition_name)
+        if competition_name is None:
+            raise ValueError("No competition specified")
+
+        status = self.competition_get_solution_status(competition_name)
+        if json_output:
+            self.print_obj(status)
+        else:
+            self._print_competition_solution_status(status)
+
+    def _print_competition_solution_status(self, status: ApiCompetitionSolutionStatus) -> None:
+        """Print a compact human view of a solution status."""
+        if status.setup_error:
+            print("Ready: false (setup failed)")
+            print(f"Setup error: {status.setup_error}")
+        else:
+            print(f"Ready: {'true' if status.ready else 'false'}")
+        if status.kernels_metric:
+            print("Kernels metric: true")
+        if status.row_id_column_name:
+            print(f"Row ID column: {status.row_id_column_name}")
+        info = status.solution_info
+        if info is not None and (info.file_name or info.file_size_bytes or info.upload_date):
+            parts = []
+            if info.file_name:
+                parts.append(info.file_name)
+            if info.file_size_bytes:
+                parts.append(File.get_size(info.file_size_bytes))
+            if info.upload_date:
+                parts.append(f"uploaded {info.upload_date.isoformat()}")
+            print("Solution file: " + " — ".join(parts))
+            row_bits = []
+            if info.total_rows:
+                row_bits.append(f"total={info.total_rows}")
+            if info.public_rows:
+                row_bits.append(f"public={info.public_rows}")
+            if info.private_rows:
+                row_bits.append(f"private={info.private_rows}")
+            if row_bits:
+                print("  " + ", ".join(row_bits))
+        if status.column_mapping:
+            print("Column mapping:")
+            for metric_col, csv_col in status.column_mapping.items():
+                print(f"  {metric_col} -> {csv_col}")
+        if status.required_metric_columns:
+            print("Required columns:")
+            for col in status.required_metric_columns:
+                if col is None:
+                    continue
+                print(f"  {col.name} ({col.data_type})")
 
     def competition_launch(self, competition_name: str, future_time: Optional[datetime] = None) -> None:
         """Launch a competition you host, optionally at a future UTC time.
@@ -5489,10 +5688,75 @@ class KaggleApi:
         else:
             print("Dataset creation error: " + result.error)
 
+    def _resume_marker_path(self, outfile):
+        """Path of the sidecar file that records the identity of an in-progress download."""
+        return outfile + ".kaggle-partial"
+
+    def _read_resume_marker(self, outfile):
+        """Return the persisted resume marker dict for ``outfile``, or None if absent/invalid."""
+        try:
+            with open(self._resume_marker_path(outfile), "r") as marker:
+                data = json.load(marker)
+            return data if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def _write_resume_marker(self, outfile, validator, size):
+        """Persist the current object's identity next to a partially-downloaded file.
+
+        Without an identity token (``validator``) a future run cannot prove the
+        partial belongs to the current object, so no marker is written (and any
+        stale one is removed) to keep cross-invocation resume disabled.
+        """
+        if validator is None:
+            self._clear_resume_marker(outfile)
+            return
+        try:
+            with open(self._resume_marker_path(outfile), "w") as marker:
+                json.dump({"validator": validator, "size": size}, marker)
+        except OSError:
+            pass  # Best effort: at worst we simply cannot resume this file later.
+
+    def _clear_resume_marker(self, outfile):
+        """Remove the resume marker for ``outfile`` if present."""
+        try:
+            os.remove(self._resume_marker_path(outfile))
+        except OSError:
+            pass
+
+    def _can_resume_partial(self, outfile, resume, resumable, validator, size):
+        """Whether an existing local file is a verified partial of the current object.
+
+        Returns True only when appending to ``outfile`` is provably safe: resume
+        was requested, the server supports ranges, we have an identity token, and
+        a persisted marker matches that token (and the expected total size) while
+        the local file is strictly shorter than the remote object.
+        """
+        if not (resume and resumable) or validator is None:
+            return False
+        if not os.path.isfile(outfile):
+            return False
+        marker = self._read_resume_marker(outfile)
+        if not marker or marker.get("validator") != validator:
+            return False
+        if size is not None and marker.get("size") != size:
+            return False
+        part_size = os.path.getsize(outfile)
+        if size is not None:
+            return 0 < part_size < size
+        return part_size > 0
+
     def download_file(
         self, response, outfile, http_client, quiet=True, resume=False, chunk_size=1048576, max_retries=5, timeout=300
     ):
         """Downloads a file to an output file, streaming in chunks with automatic retry on failure.
+
+        A resume (HTTP Range request appended to the existing file) is only performed
+        when the local bytes are proven to belong to the current remote object: either
+        because it is an in-process retry of the same download, or because a persisted
+        ``.kaggle-partial`` marker records a matching identity token (ETag/Last-Modified)
+        and total size. This prevents silently corrupting or keeping a stale file when
+        the remote object has changed between runs.
 
         Args:
             response: The response object to download.
@@ -5522,6 +5786,12 @@ class KaggleApi:
         # Check if file is resumable
         resumable = "Accept-Ranges" in response.headers and response.headers["Accept-Ranges"] == "bytes"
 
+        # Identity token used to prove a local partial belongs to the *current*
+        # remote object before we resume (append) onto it. Prefer the strong
+        # ETag; fall back to Last-Modified. May be None if the server sends
+        # neither, in which case cross-invocation resume is disabled.
+        resume_validator = response.headers.get("ETag") or last_modified
+
         # Retry loop for handling network errors
         retry_count = 0
         download_url = response.url
@@ -5537,12 +5807,28 @@ class KaggleApi:
                 # Check file existence inside loop (may be created during retry)
                 file_exists = os.path.isfile(outfile)
 
-                # Determine starting position
-                if retry_count > 0 or (resume and resumable and file_exists):
+                # Decide whether to resume an existing file or start fresh.
+                #
+                # Appending only makes sense when the bytes already on disk belong
+                # to the *same* remote object we are fetching now. We allow that
+                # only for an in-process retry (same download session) or when a
+                # persisted resume marker proves the local partial was written for
+                # the current object. Otherwise a stale file from an older/newer
+                # version would be silently corrupted (remote grew) or kept as-is
+                # (remote shrank). See the method docstring.
+                resume_from_partial = retry_count == 0 and self._can_resume_partial(
+                    outfile, resume, resumable, resume_validator, size
+                )
+
+                if retry_count > 0 or resume_from_partial:
                     size_read = os.path.getsize(outfile) if file_exists else 0
                     open_mode = "ab"
 
-                    if size is not None and size_read >= size:
+                    if size is not None and size_read == size:
+                        # Every byte is already present (e.g. a retry that had in
+                        # fact completed). Finalize instead of re-downloading.
+                        os.utime(outfile, times=(remote_date_timestamp, remote_date_timestamp))
+                        self._clear_resume_marker(outfile)
                         if not quiet:
                             print("File already downloaded completely.")
                         return
@@ -5557,9 +5843,14 @@ class KaggleApi:
                         else:
                             print(f"Resuming from {size_read} bytes{remaining}...")
 
-                    # Request with Range header for resume, preserving authentication
+                    # Request with Range header for resume, preserving authentication.
+                    # If-Range asks the server to return the full object (200) instead
+                    # of a partial (206) if it changed underneath us, so we never
+                    # append across a version boundary.
                     retry_headers = original_headers.copy()
                     retry_headers["Range"] = f"bytes={size_read}-"
+                    if resume_validator is not None:
+                        retry_headers["If-Range"] = resume_validator
                     response = requests.request(
                         original_method,
                         download_url,
@@ -5567,9 +5858,35 @@ class KaggleApi:
                         stream=True,
                         timeout=timeout,
                     )
+
+                    if response.status_code == 206:
+                        pass  # Partial content: safe to append from size_read.
+                    elif response.status_code == 200:
+                        # Range ignored or object changed (If-Range miss): the body
+                        # is the whole current object, so overwrite from scratch.
+                        size_read = 0
+                        open_mode = "wb"
+                        self._write_resume_marker(outfile, resume_validator, size)
+                    else:
+                        # e.g. 416 Range Not Satisfiable (local file >= remote size).
+                        # Discard the stale bytes and re-request the full object.
+                        response.close()
+                        response = requests.request(
+                            original_method,
+                            download_url,
+                            headers=original_headers,
+                            stream=True,
+                            timeout=timeout,
+                        )
+                        size_read = 0
+                        open_mode = "wb"
+                        self._write_resume_marker(outfile, resume_validator, size)
                 else:
                     size_read = 0
                     open_mode = "wb"
+                    # Persist object identity up front so a later invocation can
+                    # safely resume this file if the download is interrupted.
+                    self._write_resume_marker(outfile, resume_validator, size)
 
                     if not quiet:
                         print("Downloading " + os.path.basename(outfile) + " to " + outpath)
@@ -5612,6 +5929,10 @@ class KaggleApi:
                         if not quiet:
                             print(f"\n{error_msg}")
                         raise ValueError(error_msg)
+
+                # Completed and verified: drop the resume marker so this file is
+                # never treated as a resumable partial on a future run.
+                self._clear_resume_marker(outfile)
 
                 # Success - exit retry loop
                 break
@@ -9087,10 +9408,41 @@ class KaggleApi:
 
     @staticmethod
     def _make_task_slug(task: str) -> ApiBenchmarkTaskSlug:
-        """Build an ApiBenchmarkTaskSlug from a (pre-normalized) task string."""
+        """Build an ApiBenchmarkTaskSlug from a (pre-normalized) task string.
+
+        Supports the ``owner/task`` format: when the string contains a ``/``,
+        the part before it is used as ``owner_slug`` and the part after as
+        ``task_slug``. Without a ``/`` only ``task_slug`` is set and the owner
+        defaults to the current user on the server.
+        """
         slug = ApiBenchmarkTaskSlug()
-        slug.task_slug = task
+        if "/" in task:
+            owner, task_slug = task.split("/", 1)
+            slug.owner_slug = owner
+            slug.task_slug = task_slug
+        else:
+            slug.task_slug = task
         return slug
+
+    @staticmethod
+    def _slugify_task(task: str) -> str:
+        """Slugify a task name while preserving the ``owner/task`` separator.
+
+        The generic ``slugify()`` replaces ``/`` with ``-``, which destroys
+        the owner/task structure that ``_make_task_slug`` relies on.  This
+        helper slugifies each segment independently so that
+        ``owner/my-task`` becomes ``owner/my-task``
+        instead of ``owner-my-task``.
+
+        Raises:
+            ValueError: If either the owner or task segment is empty
+                (e.g. ``/task``, ``owner/``, ``/``).
+        """
+        parts = task.split("/", 1)
+        slugified = [slugify(p) for p in parts]
+        if len(slugified) == 2 and not all(slugified):
+            raise ValueError(f"Invalid task format '{task}'. Use 'task-name' or 'owner/task-name'.")
+        return "/".join(slugified)
 
     @staticmethod
     def _normalize_model_slug(slug: str) -> str:
@@ -9815,7 +10167,7 @@ class KaggleApi:
         if poll_interval is not None and poll_interval <= 0:
             raise ValueError("--poll-interval must be a positive integer")
         models = self._normalize_model_list(model)
-        task = slugify(task)
+        task = self._slugify_task(task)
 
         with self.build_kaggle_client() as kaggle:
             # Verify the task exists and is ready to run
@@ -9931,7 +10283,7 @@ class KaggleApi:
                 page -= 1
 
     def benchmarks_tasks_status_cli(self, task, model=None):
-        task = slugify(task)
+        task = self._slugify_task(task)
         with self.build_kaggle_client() as kaggle:
             task_info = self._get_benchmark_task(task, kaggle)
             print(f"Task:     {task_info.slug.task_slug}")
@@ -9970,7 +10322,7 @@ class KaggleApi:
 
     def benchmarks_tasks_download_cli(self, task, model=None, output=None, include_source=False, force=False):
         """Download output files for completed/errored benchmark task runs."""
-        task = slugify(task)
+        task = self._slugify_task(task)
         output = output or "."
 
         with self.build_kaggle_client() as kaggle:
@@ -10049,6 +10401,7 @@ class KaggleApi:
                     # Note: extractall() is safe here because the zip originates from
                     # the trusted Kaggle server, not user-supplied input (zip-slip).
                     with zipfile.ZipFile(zipfile_path, "r") as zf:
+                        os.makedirs(tmp_outdir, exist_ok=True)
                         zf.extractall(tmp_outdir)
                 except zipfile.BadZipFile:
                     print(f"{row_prefix} {size_str:<{size_col}} {'Bad zip':<{prog_col}}")
@@ -10132,7 +10485,7 @@ class KaggleApi:
 
     def benchmarks_tasks_log_cli(self, task, model=None):
         """Print execution logs for benchmark task run(s)."""
-        task = slugify(task)
+        task = self._slugify_task(task)
 
         with self.build_kaggle_client() as kaggle:
             self._get_benchmark_task(task, kaggle)
@@ -10234,7 +10587,7 @@ class KaggleApi:
 
     def benchmarks_tasks_publish_cli(self, task, publish_backing_notebook=True):
         """Publish a benchmark task, making it public."""
-        task = slugify(task)
+        task = self._slugify_task(task)
 
         with self.build_kaggle_client() as kaggle:
             # Verify the task exists first

@@ -200,6 +200,21 @@ def test_competitions_team_submissions_parser_succeeds(parser):
     assert kwargs["team_id"] == 12345
 
 
+def test_competitions_submission_limits_positional_succeeds(parser):
+    func, kwargs = parser.dispatch(["competitions", "submission-limits", "my-comp", "--json"])
+    assert func.__name__ == "competition_get_submission_limits_cli"
+    assert kwargs["competition"] == "my-comp"
+    assert kwargs["json_output"] is True
+
+
+def test_competitions_submission_limits_dash_c_succeeds(parser):
+    func, kwargs = parser.dispatch(["competitions", "submission-limits", "-c", "my-comp"])
+    assert func.__name__ == "competition_get_submission_limits_cli"
+    assert kwargs["competition"] is None
+    assert kwargs["competition_opt"] == "my-comp"
+    assert kwargs["json_output"] is False
+
+
 def test_competitions_episodes_parser_missing_sub_id_fails(parser):
     with pytest.raises(SystemExit):
         parser.dispatch(["competitions", "episodes"])
@@ -336,18 +351,19 @@ def test_competitions_pages_delete_succeeds(parser):
     assert kwargs["quiet"] is True
 
 
-def test_competitions_hosts_default_list_succeeds(parser):
+def test_competitions_hosts_dash_c_succeeds(parser):
     func, kwargs = parser.dispatch(["competitions", "hosts", "-c", "my-comp"])
     assert func.__name__ == "competition_list_hosts_cli"
     assert kwargs.get("competition") is None
     assert kwargs["competition_opt"] == "my-comp"
 
 
-def test_competitions_hosts_list_succeeds(parser):
-    func, kwargs = parser.dispatch(["competitions", "hosts", "list", "-c", "my-comp"])
+def test_competitions_hosts_positional_succeeds(parser):
+    # `hosts` is a flat parser (used to be a subcommand group, but argparse
+    # can't disambiguate a parent positional from a subcommand token).
+    func, kwargs = parser.dispatch(["competitions", "hosts", "my-comp"])
     assert func.__name__ == "competition_list_hosts_cli"
-    assert kwargs.get("competition") is None
-    assert kwargs["competition_opt"] == "my-comp"
+    assert kwargs["competition"] == "my-comp"
 
 
 def test_competitions_data_update_missing_args_fails(parser):
@@ -422,6 +438,41 @@ def test_competitions_settings_update_succeeds(parser):
     assert kwargs["competition"] == "my-comp"
     assert kwargs["file_path"] == "settings.json"
     assert kwargs["json_output"] is True
+
+
+def test_competitions_solution_create_missing_path_fails(parser):
+    with pytest.raises(SystemExit):
+        parser.dispatch(["competitions", "solution", "create", "my-comp"])
+
+
+def test_competitions_solution_create_succeeds(parser):
+    func, kwargs = parser.dispatch(["competitions", "solution", "create", "my-comp", "-p", "/tmp/sol.csv", "-q"])
+    assert func.__name__ == "competition_create_solution_cli"
+    assert kwargs["competition"] == "my-comp"
+    assert kwargs["path"] == "/tmp/sol.csv"
+    assert kwargs["quiet"] is True
+
+
+def test_competitions_solution_create_with_dash_c_succeeds(parser):
+    func, kwargs = parser.dispatch(["competitions", "solution", "create", "-c", "my-comp", "-p", "/tmp/sol.csv"])
+    assert func.__name__ == "competition_create_solution_cli"
+    assert kwargs["competition"] is None
+    assert kwargs["competition_opt"] == "my-comp"
+    assert kwargs["path"] == "/tmp/sol.csv"
+
+
+def test_competitions_solution_status_succeeds(parser):
+    func, kwargs = parser.dispatch(["competitions", "solution", "status", "my-comp", "--json"])
+    assert func.__name__ == "competition_get_solution_status_cli"
+    assert kwargs["competition"] == "my-comp"
+    assert kwargs["json_output"] is True
+
+
+def test_competitions_solution_status_default_no_json_succeeds(parser):
+    func, kwargs = parser.dispatch(["competitions", "solution", "status", "my-comp"])
+    assert func.__name__ == "competition_get_solution_status_cli"
+    assert kwargs["competition"] == "my-comp"
+    assert kwargs["json_output"] is False
 
 
 def test_competitions_launch_parser_default_succeeds(parser):
