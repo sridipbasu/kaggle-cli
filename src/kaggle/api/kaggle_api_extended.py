@@ -1671,7 +1671,7 @@ class KaggleApi:
             raise invalid
         if value <= 0:
             raise invalid
-        return relativedelta(**{unit: value})
+        return relativedelta(**{unit: value})  # type: ignore[arg-type]
 
     def auth_revoke_token(self, reason: str):
         """Revokes the current OAuth access token.
