@@ -966,7 +966,7 @@ class KaggleApi:
     ]
 
     # Search valid types
-    valid_search_document_types = ["competition", "dataset", "notebook", "model", "user", "discussion"]
+    valid_search_document_types = ["competition", "dataset", "notebook", "model", "user", "discussion", "benchmark"]
     valid_search_sort_by = [
         "relevance",
         "hotness",
@@ -6585,7 +6585,13 @@ class KaggleApi:
             str: The reference string.
         """
         slug = document.slug or ""
-        if document.document_type in (DocumentType.DATASET, DocumentType.KERNEL, DocumentType.MODEL) and owner and slug:
+        owner_slug_types = (
+            DocumentType.DATASET,
+            DocumentType.KERNEL,
+            DocumentType.MODEL,
+            DocumentType.BENCHMARK,
+        )
+        if document.document_type in owner_slug_types and owner and slug:
             return "%s/%s" % (owner, slug)
         if slug:
             return slug

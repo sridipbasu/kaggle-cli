@@ -2768,7 +2768,7 @@ class Help(object):
     param_search_query = "Term(s) to search for across Kaggle content"
     param_search_document_type = (
         "Restrict results to a comma-separated list of content types.\n"
-        "Valid types: competition, dataset, notebook, model, user, discussion.\n"
+        "Valid types: competition, dataset, notebook, model, user, discussion, benchmark.\n"
         "Example: --type dataset,model.\n"
         "If omitted, all CLI-supported content types (the types listed above) are searched."
     )

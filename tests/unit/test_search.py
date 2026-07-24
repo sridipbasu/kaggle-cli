@@ -85,7 +85,7 @@ class TestSearchApi(unittest.TestCase):
         )
 
     def test_search_defaults_to_cli_supported_types(self):
-        # When no --type is given, the CLI restricts the pool to the six supported
+        # When no --type is given, the CLI restricts the pool to the supported
         # content types rather than sending an empty filter (which would let the
         # backend include unrenderable types like comments and blogs).
         captured = self._patch_client(_response())
@@ -99,6 +99,7 @@ class TestSearchApi(unittest.TestCase):
                 DocumentType.MODEL,
                 DocumentType.USER,
                 DocumentType.TOPIC,
+                DocumentType.BENCHMARK,
             ],
         )
 
@@ -129,6 +130,11 @@ class TestSearchApi(unittest.TestCase):
         captured = self._patch_client(_response())
         self.api.search("x", document_types=["discussion"])
         self.assertEqual(list(captured["request"].filters.document_types), [DocumentType.TOPIC])
+
+    def test_search_benchmark_type(self):
+        captured = self._patch_client(_response())
+        self.api.search("llm", document_types=["benchmark", "benchmarks"])
+        self.assertEqual(list(captured["request"].filters.document_types), [DocumentType.BENCHMARK])
 
     def test_search_rejects_unsupported_backend_type(self):
         # "comment" is a real DocumentType member but is not CLI-supported; it
@@ -251,6 +257,15 @@ class TestSearchRenderer(unittest.TestCase):
         row = self.api._search_document_to_row(_doc(DocumentType.TOPIC, "Welcome", "", doc_id=42))
         self.assertEqual(row.type, "discussion")
         self.assertEqual(row.ref, "42")
+
+    def test_benchmark_ref_is_owner_slash_slug(self):
+        row = self.api._search_document_to_row(
+            _doc(DocumentType.BENCHMARK, "LLMs understand images", "llms-understand-images", user="gpreda", votes=7)
+        )
+        self.assertEqual(row.type, "benchmark")
+        self.assertEqual(row.ref, "gpreda/llms-understand-images")
+        self.assertEqual(row.owner, "gpreda")
+        self.assertEqual(row.votes, 7)
 
 
 class TestSearchCli(unittest.TestCase):

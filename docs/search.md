@@ -11,8 +11,8 @@ cross-content equivalent of the per-command `-s/--search` flags (such as
 type you're looking for, or when you want results from several types at once.
 
 By default, `kaggle search` searches all CLI-supported content types
-(competition, dataset, notebook, model, user, discussion) — not every backend
-document type (it excludes types the CLI cannot render usefully, such as
+(competition, dataset, notebook, model, user, discussion, benchmark) — not every
+backend document type (it excludes types the CLI cannot render usefully, such as
 comments, blogs, and courses). Result ordering uses the backend's canonical
 cross-content ranking. Use `--type` to narrow to specific types.
 
@@ -25,7 +25,7 @@ kaggle search "<query>" [options]
 **Options:**
 
 *   `query`: The term(s) to search for (required).
-*   `-t, --type <TYPES>`: Restrict results to a comma-separated list of content types. Valid types: `competition`, `dataset`, `notebook`, `model`, `user`, `discussion`. If omitted, all of these CLI-supported types are searched.
+*   `-t, --type <TYPES>`: Restrict results to a comma-separated list of content types. Valid types: `competition`, `dataset`, `notebook`, `model`, `user`, `discussion`, `benchmark`. If omitted, all of these CLI-supported types are searched.
 *   `-m, --mine`: Restrict the search to your own content.
 *   `--sort-by <SORT_BY>`: Sort order. One of: `relevance` (default), `hotness`, `votes`, `dateCreated`, `dateUpdated`, `totalComments`, `lastViewed`.
 *   `--page-size <SIZE>`: Number of results to show on a page (default: 20, max: 100).

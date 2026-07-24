@@ -22,9 +22,9 @@ Unlike the per-command `-s/--search` flags (for example
 in a single request and can also find users and discussions.
 
 By default it searches all CLI-supported content types (competition, dataset,
-notebook, model, user, discussion) — not every backend document type; types the
-CLI cannot render usefully (comments, blogs, courses, etc.) are excluded.
-Ordering uses the backend's canonical cross-content ranking.
+notebook, model, user, discussion, benchmark) — not every backend document type;
+types the CLI cannot render usefully (comments, blogs, courses, etc.) are
+excluded. Ordering uses the backend's canonical cross-content ranking.
 
 **Usage:**
 
@@ -35,7 +35,7 @@ kaggle search "<query>" [options]
 **Options:**
 
 - `query`: Term(s) to search for (required).
-- `-t, --type <TYPES>`: Comma-separated content types to restrict to. Valid: `competition`, `dataset`, `notebook`, `model`, `user`, `discussion`. Omit to search all of these CLI-supported types.
+- `-t, --type <TYPES>`: Comma-separated content types to restrict to. Valid: `competition`, `dataset`, `notebook`, `model`, `user`, `discussion`, `benchmark`. Omit to search all of these CLI-supported types.
 - `-m, --mine`: Restrict the search to your own content.
 - `--sort-by <SORT_BY>`: One of `relevance` (default), `hotness`, `votes`, `dateCreated`, `dateUpdated`, `totalComments`, `lastViewed`.
 - `--page-size <SIZE>`: Results per page (default 20, max 100).
