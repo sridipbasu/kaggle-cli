@@ -3,6 +3,7 @@ Changelog
 
 ### Next
 
+* Add `--no-run` to `kaggle kernels push` to save a new version without executing the notebook, the equivalent of Quick Save in the web UI
 * Honor `--unzip` when downloading a single file with `kaggle datasets download -f`, which extracts the file from the zip archive the server wraps large files in, and add `--unzip` to `kaggle competitions download`
 * Keep the requested folder when downloading a single file with `kaggle datasets download -f` or `kaggle competitions download -f`, instead of writing it to the download root
 * Add `kaggle competitions host-add <comp> -u <user>` to grant host access on a competition to a Kaggle user
